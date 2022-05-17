@@ -1,0 +1,7 @@
+<launch>
+
+    <arg name="rosbag_fname" default=''/>
+
+    <node unless="$(eval rosbag_fname == '')" pkg="rosbag" type="record" name="recorder" args='-e "(.*)ego_vehicle(.*)" -p -o "$(find carla_ros_bridge)/$(arg rosbag_fname)"' />
+
+</launch>

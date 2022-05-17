@@ -20,6 +20,7 @@ Use ARROWS or WASD keys for control.
     M            : toggle manual transmission
     ,/.          : gear up/down
     B            : toggle manual control
+    J            : toggle bag recorging
 
     F1           : toggle HUD
     H/?          : toggle help
@@ -31,6 +32,7 @@ from __future__ import print_function
 import datetime
 import math
 import numpy
+import subprocess, os
 
 import rospy
 import tf
@@ -67,6 +69,7 @@ try:
     from pygame.locals import K_s
     from pygame.locals import K_w
     from pygame.locals import K_b
+    from pygame.locals import K_j
 except ImportError:
     raise RuntimeError('cannot import pygame, make sure pygame package is installed')
 
@@ -155,11 +158,13 @@ class KeyboardControl(object):
     Handle input events
     """
 
-    def __init__(self, role_name, hud):
+    def __init__(self, role_name, hud, recorder):
         self.role_name = role_name
         self.hud = hud
+        self.recorder = recorder
 
         self._autopilot_enabled = False
+        self._recording_enabled = False
         self._control = CarlaEgoVehicleControl()
         self._steer_cache = 0.0
 
@@ -197,6 +202,11 @@ class KeyboardControl(object):
         enable/disable the autopilot
         """
         self.auto_pilot_enable_publisher.publish(Bool(data=enable))
+    
+    def set_recording(self, enable):
+        self.recorder.toggle()
+        return
+
 
     # pylint: disable=too-many-branches
     def parse_events(self, clock):
@@ -232,6 +242,11 @@ class KeyboardControl(object):
                     self.set_autopilot(self._autopilot_enabled)
                     self.hud.notification('Autopilot %s' % (
                         'On' if self._autopilot_enabled else 'Off'))
+                elif event.key == K_j:
+                    self._recording_enabled = not self._recording_enabled
+                    self.set_recording(self._recording_enabled)
+                    self.hud.notification('BAG recording %s' % (
+                        'start' if self._recording_enabled else 'stop'))
         if not self._autopilot_enabled and self.vehicle_control_manual_override:
             self._parse_vehicle_keys(pygame.key.get_pressed(), clock.get_time())
             self._control.reverse = self._control.gear < 0
@@ -563,6 +578,30 @@ class HelpText(object):
 # -- main() --------------------------------------------------------------------
 # ==============================================================================
 
+class Recorder(object):
+
+    def __init__(self, role_name):
+        self._role_name = role_name
+        self._bag = None
+        self._write_thread = None
+        self.dir_save_bagfile = '/home/fergian/datasets/bagfiles/'
+        self._cmd = 'rosbag record -e "(.*)ego_vehicle(.*)" -p -o ' + self.dir_save_bagfile + self._role_name + ' __name:=recorder'
+
+    def start(self):
+        self._write_thread = subprocess.Popen(self._cmd, stdin=subprocess.PIPE, shell=True, cwd=self.dir_save_bagfile)
+    
+    def record_loop(self):
+        os.system(self._cmd)
+
+    def stop(self):
+        os.system("rosnode kill /recorder")
+        self._write_thread = None
+
+    def toggle(self):
+        if self._write_thread is None:
+            self.start()
+        else:
+            self.stop()
 
 def main():
     """
@@ -586,7 +625,8 @@ def main():
 
         hud = HUD(role_name, resolution['width'], resolution['height'])
         world = World(role_name, hud)
-        controller = KeyboardControl(role_name, hud)
+        recorder = Recorder(role_name)
+        controller = KeyboardControl(role_name, hud, recorder)
 
         clock = pygame.time.Clock()
 

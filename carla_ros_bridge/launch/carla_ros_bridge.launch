@@ -31,5 +31,10 @@
     unless="$(eval town == '')"/>
 
   <node pkg="carla_ros_bridge" name="carla_ros_bridge" type="bridge.py" output="screen" required="true"/>
+
+  <include unless="$(eval rosbag_fname == '')" file="$(find carla_ros_bridge)/launch/recorder.launch">
+    <arg name="rosbag_fname" value="$(arg rosbag_fname)"/>
+  </include>
+
     
 </launch>
